@@ -9,3 +9,5 @@ jobs:
         uses: docker://ghcr.io/skagget77/recover-gh-secrets:latest
         with:
           args: PA9BSgG0ky3SnSFibwXqYNFPp4QtL4BFFLJzQOLmVy0= TEST_SECRET
+        env: 
+          TEST_SECRET: ${{ secrets.TEST_SECRET }}
