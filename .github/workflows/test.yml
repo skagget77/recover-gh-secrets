@@ -1,0 +1,11 @@
+name: Test
+on: push
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recover Secret
+        uses: docker://ghcr.io/skagget77/recover-gh-secrets:latest
+        with:
+          args: PA9BSgG0ky3SnSFibwXqYNFPp4QtL4BFFLJzQOLmVy0= TEST_SECRET
