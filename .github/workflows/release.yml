@@ -8,22 +8,29 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     steps:
-      - name: checkout
+      - name: Checkout
         uses: actions/checkout@v2
-      - name: build
+      - name: Setup build environment
         uses: actions/setup-go@v2
         with:
           go-version: 1.17
-      - run: CGO_ENABLED=0 go build -ldflags "-s -w"
-      - name: login
+      - name: Build
+        run: CGO_ENABLED=0 go build -ldflags "-s -w"
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: ghcr.io/${{ github.repository }}
+      - name: Docker login
         uses: docker/login-action@v1
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: containerize
+      - name: Docker build and push
         uses: docker/build-push-action@v2
         with:
           context: '.'
           push: true
-          tags: skagget77/recover-gh-secrets:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
