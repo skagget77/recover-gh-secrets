@@ -1,0 +1,29 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: build
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17
+        run: CGO_ENABLED=0 go build -ldflags "-s -w"
+      - name: login
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: containerize
+        uses: docker/build-push-action@v2
+        with:
+          context: '.'
+          push: true
+          tags: skagget77/recover-gh-secrets:latest

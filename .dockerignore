@@ -1,0 +1,10 @@
+.dockerignore
+.git
+.github
+.gitignore
+certs/openssl_ca.cnf
+certs/openssl_server.cnf
+Dockerfile
+go.mod
+go.sum
+main.go
