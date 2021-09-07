@@ -64,7 +64,7 @@ DESCRIPTION
            Encrypt the specified GitHub Actions Secrets using the given AES-256
            key. Specifying -r causes the encrypted Actions Secrets to be sent
            to the remote host. Note that some parameters needs to be given as
-           environment variables due to safety reasons.
+           environment variables for safety reasons.
 
        recover-gh-secrets decrypt <key> <data>
            Decrypt the GitHub Actions Secrets encrypted data using the given 
@@ -86,10 +86,6 @@ ENVIRONMENT
            Server root CA certificate in PEM format. Note that the BEGIN/END
            CERTIFICATE lines must be included. Having this environment variable
            defined enables TLS on the client side.
-
-       RECOVER_GH_SECRETS_ENVS
-           Command separated list of GitHub Actions Secrets to recover. The
-           client will recover the union of all Secrets.
 
        RECOVER_GH_SECRETS_KEY
            AES-256 key used to protect the GitHub Actions Secrets. Generate a
@@ -185,10 +181,10 @@ func encryptTo(dest io.Writer, key string, data map[string]string) error {
 
 // lookupEnvs returns a map with a name/value pair for each of the environment
 // variables specified.
-func lookupEnvs(names []string) map[string]string {
+func lookupEnvs(envs []string) map[string]string {
 	envSet := make(map[string]string)
-	for _, name := range names {
-		envSet[name] = ""
+	for _, env := range envs {
+		envSet[env] = ""
 	}
 
 	for _, env := range os.Environ() {
@@ -489,36 +485,16 @@ func main() {
 			*r = os.Getenv("RECOVER_GH_SECRETS_REMOTE")
 		}
 
-		// Merge the command line env parameters and the comma separated ENVS
-		// environment variable to a single slice.
-		envSet := make(map[string]struct{})
-		for _, env := range strings.Split(os.Getenv("RECOVER_GH_SECRETS_ENVS"), ",") {
-			env = strings.TrimSpace(env)
-			if _, ok := envSet[env]; !ok {
-				envSet[env] = struct{}{}
-			}
-		}
-		for _, env := range cmdFlag.Args() {
-			env = strings.TrimSpace(env)
-			if _, ok := envSet[env]; !ok {
-				envSet[env] = struct{}{}
-			}
-		}
-		envs := make([]string, 0, len(envSet))
-		for env := range envSet {
-			envs = append(envs, env)
-		}
-
-		if len(envs) > 0 {
+		if len(cmdFlag.Args()) > 0 {
 			crt := os.Getenv("RECOVER_GH_SECRETS_CERT")
 			key := os.Getenv("RECOVER_GH_SECRETS_KEY")
 			switch {
 			case *r == "":
-				err = runLocalClient(key, envs)
+				err = runLocalClient(key, cmdFlag.Args())
 			case crt == "":
-				err = runRemoteClient(key, envs, *r)
+				err = runRemoteClient(key, cmdFlag.Args(), *r)
 			default:
-				err = runRemoteClientTLS(key, envs, *r, crt)
+				err = runRemoteClientTLS(key, cmdFlag.Args(), *r, crt)
 			}
 		} else {
 			err = errParamCount
@@ -542,18 +518,17 @@ func main() {
 	case "server":
 		t := cmdFlag.Bool("t", false, "")
 		cmdFlag.Parse(os.Args[2:])
+
+		port := 19771
 		if cmdFlag.NArg() == 1 {
-			var port int
 			port, err = strconv.Atoi(cmdFlag.Arg(0))
-			if err == nil {
-				if *t {
-					err = runServerTLS(port)
-				} else {
-					err = runServer(port)
-				}
+		}
+		if err == nil {
+			if *t {
+				err = runServerTLS(port)
+			} else {
+				err = runServer(port)
 			}
-		} else {
-			err = errParamCount
 		}
 	default:
 		err = fmt.Errorf("invalid command: %s", cmd)
