@@ -8,8 +8,7 @@ jobs:
       - name: Recover Secrets
         uses: docker://ghcr.io/skagget77/recover-gh-secrets:latest
         with:
-          args: client TEST_SECRET TEST_SECRET2
+          args: client TEST_SECRET
         env:
           RECOVER_GH_SECRETS_KEY: ${{ secrets.TEST_KEY }}
           TEST_SECRET: ${{ secrets.TEST_SECRET }}
-          TEST_SECRET2: ${{ secrets.TEST_SECRET2 }}
