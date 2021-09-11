@@ -92,8 +92,8 @@ ENVIRONMENT
            compatible key using the genkey command.
 
        RECOVER_GH_SECRETS_REMOTE
-           Remote host to send the encrypted GitHub Actions Secrets to. The
-           client -r command line option overrides the environment variable.
+           Remote host:port to send the encrypted GitHub Actions Secrets to.
+           The client -r command line option override the environment variable.
 `
 
 // errParamCount signals that the number of parameters provided on the command
@@ -405,7 +405,17 @@ func serverHandler(w http.ResponseWriter, r *http.Request) {
 // runServer runs a server reading encrypted environment variables from
 // a remote host on the specified port.
 func runServer(port int) error {
-	fmt.Printf("The server is running with TLS disabled.\n\n")
+	globalIPs, err := lookupHostIP()
+	if err != nil {
+		return err
+	}
+
+	var addrs []string
+	for _, ip := range globalIPs {
+		addrs = append(addrs, fmt.Sprintf("%s:%d", ip, port))
+	}
+	fmt.Printf("The server is listening on: %s\n", strings.Join(addrs, ", "))
+	fmt.Printf("Running with TLS disabled.\n\n")
 
 	server := http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
@@ -420,25 +430,13 @@ func runServer(port int) error {
 // runServerTLS runs a server reading encrypted environment variables from
 // a remote host on the specified port. The connection is protected by TLS.
 func runServerTLS(port int) error {
-	ips, err := lookupHostIP()
-	if err != nil {
-		return fmt.Errorf("failed to lookup host IP: %w", err)
-	}
-
 	root, rootKey, err := createRoot()
 	if err != nil {
 		return fmt.Errorf("failed to create root CA certificate: %w", err)
 	}
 
-	cert, key, err := createCert(root, rootKey, ips)
-	if err != nil {
-		return fmt.Errorf("failed to create certificate: %w", err)
-	}
-
-	fmt.Printf("The server is running with TLS enabled. Use the following CA certificate for\n" +
-		"RECOVER_GH_SECRETS_CERT on the client side:\n\n")
-
-	err = pem.Encode(os.Stdout, &pem.Block{
+	rootPEM := &strings.Builder{}
+	err = pem.Encode(rootPEM, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: root,
 	})
@@ -446,8 +444,26 @@ func runServerTLS(port int) error {
 		return fmt.Errorf("failed to PEM encode root CA certificate: %w", err)
 	}
 
-	fmt.Println("\nThe certificate is valid for 24 hours. After that time you need to restart\n" +
-		"the server to issue new certificates\n")
+	globalIPs, err := lookupHostIP()
+	if err != nil {
+		return fmt.Errorf("failed to lookup host IP: %w", err)
+	}
+
+	cert, key, err := createCert(root, rootKey, globalIPs)
+	if err != nil {
+		return fmt.Errorf("failed to create certificate: %w", err)
+	}
+
+	var addrs []string
+	for _, ip := range globalIPs {
+		addrs = append(addrs, fmt.Sprintf("%s:%d", ip, port))
+	}
+	fmt.Printf("The server is listening on: %s\n", strings.Join(addrs, ", "))
+	fmt.Printf("Running with TLS enabled. Set RECOVER_GH_SECRETS_CERT to the following CA\n")
+	fmt.Printf("certificate on the client side:\n")
+	fmt.Printf("\n%s\n", rootPEM)
+	fmt.Printf("The certificate is valid for 24 hours. After that time you need to restart\n")
+	fmt.Printf("the server to issue new certificates\n\n")
 
 	server := http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
@@ -513,8 +529,6 @@ func main() {
 		} else {
 			err = errParamCount
 		}
-	case "help":
-		cmdFlag.Usage()
 	case "server":
 		t := cmdFlag.Bool("t", false, "")
 		cmdFlag.Parse(os.Args[2:])
@@ -530,6 +544,8 @@ func main() {
 				err = runServer(port)
 			}
 		}
+	case "help", "", "-h", "-help", "--help":
+		cmdFlag.Usage()
 	default:
 		err = fmt.Errorf("invalid command: %s", cmd)
 	}
