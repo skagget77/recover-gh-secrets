@@ -50,21 +50,22 @@ NAME
        recover-gh-secrets - Recover Actions Secrets from a GitHub repository
 
 SYNOPSIS
-       recover-gh-secrets client [-r <host>[:<port>]] <env>...
+       recover-gh-secrets client [-r <address>[:<port>]] <env>...
        recover-gh-secrets decrypt <key> <data>
        recover-gh-secrets genkey
-       recover-gh-secrets server [-t] [<port>]
+       recover-gh-secrets server [-t [<address>]] [<port>]
 
 DESCRIPTION
        To recover GitHub Actions Secrets run recover-gh-secrets client as a
        GitHub Action in the repository that contain the Actions Secrets to
        recover.
 
-       recover-gh-secrets client [-r <host>[:<port>]] <env>...
-           Encrypt the specified GitHub Actions Secrets using the given AES-256
-           key. Specifying -r causes the encrypted Actions Secrets to be sent
-           to the remote host. Note that some parameters needs to be given as
-           environment variables for safety reasons.
+       recover-gh-secrets client [-r <address>[:<port>]] <env>...
+           Encrypt the GitHub Actions Secrets using the AES-256 key specified
+           as an environment variable. Specifying -r causes the encrypted
+           Actions Secrets to be sent to the remote host. Note that some
+           parameters needs to be given as environment variables for safety
+           reasons.
 
        recover-gh-secrets decrypt <key> <data>
            Decrypt the GitHub Actions Secrets encrypted data using the given 
@@ -74,10 +75,13 @@ DESCRIPTION
            Generate a new random AES-256 key which is used to protect the
            GitHub Actions Secrets.
 
-       recover-gh-secrets server [-t] [<port>]
+       recover-gh-secrets server [-t [<address>]] [<port>]
            Run a server receiving encrypted GitHub Actions Secrets from remote
            hosts. The server will listen on all global unicast addresses. The
-           default port is 19771. Specifying -t enables TLS.
+           default port is 19771. Specifying -t enables TLS. When an IP address
+           is given to -t the server certificate will include that IP address
+           allowing TLS to work even though the server is behind a router with
+           NAT.
 
 ENVIRONMENT
        The following environment variables can be used with the client command:
@@ -92,8 +96,8 @@ ENVIRONMENT
            compatible key using the genkey command.
 
        RECOVER_GH_SECRETS_REMOTE
-           Remote host:port to send the encrypted GitHub Actions Secrets to.
-           The client -r command line option override the environment variable.
+           Remote host to send the encrypted GitHub Actions Secrets to. The
+           client -r command line option override the environment variable.
 `
 
 // errParamCount signals that the number of parameters provided on the command
@@ -220,8 +224,16 @@ func runRemoteClient(key string, envs []string, address string) error {
 		return fmt.Errorf("failed to encrypt data: %w", err)
 	}
 
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		host, port, err = net.SplitHostPort(address + ":19771")
+		if err != nil {
+			return err
+		}
+	}
+
 	client := http.DefaultClient
-	res, err := client.Post(fmt.Sprintf("http://%s", address), "text/plain", buf)
+	res, err := client.Post(fmt.Sprintf("http://%s:%s", host, port), "text/plain", buf)
 	if err != nil {
 		return fmt.Errorf("failed to post data: %w", err)
 	}
@@ -278,8 +290,16 @@ func runRemoteClientTLS(key string, envs []string, address, cert string) error {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{RootCAs: certPool}
 
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		host, port, err = net.SplitHostPort(address + ":19771")
+		if err != nil {
+			return err
+		}
+	}
+
 	client := &http.Client{Transport: transport}
-	res, err := client.Post(fmt.Sprintf("https://%s", address), "text/plain", buf)
+	res, err := client.Post(fmt.Sprintf("https://%s:%s", host, port), "text/plain", buf)
 	if err != nil {
 		return fmt.Errorf("failed to post data: %w", err)
 	}
@@ -429,7 +449,9 @@ func runServer(port int) error {
 
 // runServerTLS runs a server reading encrypted environment variables from
 // a remote host on the specified port. The connection is protected by TLS.
-func runServerTLS(port int) error {
+// Address can be used to specify an additional IP address to include in the
+// server certificate, e.g. when the server runs behind a router with NAT.
+func runServerTLS(port int, address net.IP) error {
 	root, rootKey, err := createRoot()
 	if err != nil {
 		return fmt.Errorf("failed to create root CA certificate: %w", err)
@@ -448,16 +470,19 @@ func runServerTLS(port int) error {
 	if err != nil {
 		return fmt.Errorf("failed to lookup host IP: %w", err)
 	}
+	var addrs []string
+	for _, ip := range globalIPs {
+		addrs = append(addrs, fmt.Sprintf("%s:%d", ip, port))
+	}
 
+	if address != nil {
+		globalIPs = append(globalIPs, address)
+	}
 	cert, key, err := createCert(root, rootKey, globalIPs)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate: %w", err)
 	}
 
-	var addrs []string
-	for _, ip := range globalIPs {
-		addrs = append(addrs, fmt.Sprintf("%s:%d", ip, port))
-	}
 	fmt.Printf("The server is listening on: %s\n", strings.Join(addrs, ", "))
 	fmt.Printf("Running with TLS enabled. Set RECOVER_GH_SECRETS_CERT to the following CA\n")
 	fmt.Printf("certificate on the client side:\n")
@@ -479,6 +504,37 @@ func runServerTLS(port int) error {
 	}
 
 	return server.ListenAndServeTLS("", "")
+}
+
+// parseCmdServer parses the arguments given to the server command when the -t
+// flag is given.
+func parseCmdServer(cmdFlag *flag.FlagSet) (int, net.IP, error) {
+	switch cmdFlag.NArg() {
+	case 0:
+		return 19771, nil, nil
+	case 1:
+		addr := net.ParseIP(cmdFlag.Arg(0))
+		if addr != nil {
+			return 19771, addr, nil
+		}
+		port, err := strconv.Atoi(cmdFlag.Arg(0))
+		if err == nil {
+			return port, nil, nil
+		}
+		return 0, nil, fmt.Errorf("invalid IP address or port number")
+	case 2:
+		addr := net.ParseIP(cmdFlag.Arg(0))
+		if addr == nil {
+			return 0, nil, fmt.Errorf("invalid IP address")
+		}
+		port, err := strconv.Atoi(cmdFlag.Arg(1))
+		if err != nil {
+			return 0, nil, fmt.Errorf("invalid port number")
+		}
+		return port, addr, nil
+	default:
+		return 0, nil, errParamCount
+	}
 }
 
 func main() {
@@ -533,15 +589,24 @@ func main() {
 		t := cmdFlag.Bool("t", false, "")
 		cmdFlag.Parse(os.Args[2:])
 
-		port := 19771
-		if cmdFlag.NArg() == 1 {
-			port, err = strconv.Atoi(cmdFlag.Arg(0))
-		}
 		if err == nil {
 			if *t {
-				err = runServerTLS(port)
+				var port int
+				var address net.IP
+				port, address, err = parseCmdServer(cmdFlag)
+				if err == nil {
+					err = runServerTLS(port, address)
+				}
 			} else {
-				err = runServer(port)
+				port := 19771
+				if cmdFlag.NArg() == 1 {
+					port, err = strconv.Atoi(cmdFlag.Arg(0))
+				} else if cmdFlag.NArg() > 1 {
+					err = errParamCount
+				}
+				if err == nil {
+					err = runServer(port)
+				}
 			}
 		}
 	case "help", "", "-h", "-help", "--help":
