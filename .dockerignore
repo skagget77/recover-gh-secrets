@@ -1,8 +1,10 @@
+Dockerfile
+Dockerfile.arm
+Dockerfile.arm64
 .dockerignore
 .git
 .github
 .gitignore
-Dockerfile
 go.mod
 go.sum
 main.go
