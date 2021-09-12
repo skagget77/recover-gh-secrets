@@ -4,7 +4,6 @@ A simple tool for recovering GitHub Actions Secrets from a GitHub repository.
 The tool can be run in three different ways, each with an increased level of security. The least secure way, and the easiest, is to have the client output the secrets directly to the log of the Action runner. Note that the secrets are always encrypted with AES-256 but if the key ever leaks the secrets would be compromised. One level up in security is to have the client send the secrets to another machine instead of writing them to the log. The top level is to have the connection between the client and the remote machine protected by TLS with a custom CA certificate preventing the client from connecting to the wrong machine.
 
 ## How To Recover Secrets
-This example
 
 ### 1. Pull Image
 There are prebuild docker images for Linux/AMD64, Linux/ARM64v8 and Linux/ARM32v7. All images are hosted on GitHubs Container Registry and can be found [here](https://github.com/skagget77/recover-gh-secrets/pkgs/container/recover-gh-secrets).
