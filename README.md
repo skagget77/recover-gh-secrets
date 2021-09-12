@@ -1,7 +1,7 @@
 # Recover GitHub Secrets
 A simple tool for recovering GitHub Actions Secrets from a GitHub repository.
 
-The tool can be run in three different ways, each with an increased level of security. The least secure way, and the easiest, is to have the client output the Secrets directly to the log of the Action runner. Note that the Secrets are always encrypted with AES-256 but if the key ever leaks the Secrets would be compromised. One level up in security is to have the client send the Secrets to another machine instead of writing them to the log. The top level is to have the connection between the client and the remote machine protected by TLS with a custom CA certificate preventing the client from connecting to the wrong machine.
+The tool can be run in three different ways, each with an increased level of security. The least secure way, and the easiest, is to have the client output the secrets directly to the log of the Action runner. Note that the secrets are always encrypted with AES-256 but if the key ever leaks the secrets would be compromised. One level up in security is to have the client send the secrets to another machine instead of writing them to the log. The top level is to have the connection between the client and the remote machine protected by TLS with a custom CA certificate preventing the client from connecting to the wrong machine.
 
 ## How To Recover Secrets
 This example
@@ -21,7 +21,7 @@ ghcr.io/skagget77/recover-gh-secrets:latest
 ```
 
 ### 2. Generate Key
-The key is used to protect the Secrets outside of the repository. Because of this it's important that the key is kept secret.
+The key is used to protect the secrets outside of the repository. Because of this it's important that the key is kept secret.
 
 Generate a new random key:
 ```
@@ -59,7 +59,7 @@ the server to issue new certificates
 Note that if you're running your server with TLS and it's behind a router with NAT you need to pass the IP address of the router to the `-t` flag. Otherwise the client will refuse to connect since the certificate does not contain the public IP address of the server.
 
 ### 4. Run Client
-The client needs to run as a GitHub Action.
+The client needs to run as part of GitHub Actions workflow to get access to the GitHub Actions Secrets.
 
 In the settings for the GitHub repository where the secrets you want to recover are, define a new repository secret named *RECOVER_GH_SECRETS_CERT*. The value should be the certificate written to the terminal by the server in step 3. Here it would be:
 ```
@@ -87,7 +87,7 @@ Define yet another repository secret named *RECOVER_GH_SECRETS_KEY*. The value s
 rgMXauXNOI8Ta4ewmoPJhA61CvwV5zpQKaPaNJ6Rymw=
 ```
 
-Use the following workflow:
+Under Actions in the repository where the secrets you want to recover are add the following as a new workflow:
 ```
 name: Recover Secrets
 on: workflow_dispatch
@@ -99,15 +99,19 @@ jobs:
       - name: Recover Secrets
         uses: docker://ghcr.io/skagget77/recover-gh-secrets:latest
         with:
-          args: client MY_SECRET
+          args: client TEST_SECRET
         env:
           RECOVER_GH_SECRETS_CERT: ${{ secrets.RECOVER_GH_SECRETS_CERT }}
           RECOVER_GH_SECRETS_KEY: ${{ secrets.RECOVER_GH_SECRETS_KEY }}
           RECOVER_GH_SECRETS_REMOTE: ${{ secrets.RECOVER_GH_SECRETS_REMOTE }}
-          MY_SECRET: ${{ secrets.MY_SECRET }}
+          TEST_SECRET: ${{ secrets.TEST_SECRET }}
 ```
+Where `TEST_SECRET` is the name of the secret to recover. The workflow triggers on `workflow_dispatch` which means it has to be started manually.
 
 ### 5. Decrypt
+If the workflow run successfully in step 4 there should be a base64 encoded blob on the server's terminal.
+
+Decrypt the base64 encoded blob:
 ```
 $ docker run --rm ghcr.io/skagget77/recover-gh-secrets:latest decrypt \
     rgMXauXNOI8Ta4ewmoPJhA61CvwV5zpQKaPaNJ6Rymw= \
