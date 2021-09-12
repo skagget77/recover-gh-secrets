@@ -1,0 +1,3 @@
+FROM arm32v7/alpine
+COPY . /
+ENTRYPOINT ["/recover-gh-secrets"]
