@@ -105,7 +105,7 @@ jobs:
           RECOVER_GH_SECRETS_REMOTE: ${{ secrets.RECOVER_GH_SECRETS_REMOTE }}
           TEST_SECRET: ${{ secrets.TEST_SECRET }}
 ```
-Where `TEST_SECRET` is the name of the secret to recover. The workflow triggers on `workflow_dispatch` which means it has to be started manually.
+Where `TEST_SECRET` is the name of the secret to recover. The workflow triggers on `workflow_dispatch` which means it has to be started manually. Note that if the workflow is in a branch other than the default branch the trigger needs to be `push` for GitHub to run it.
 
 ### 5. Decrypt
 If the workflow run successfully in step 4 there should be a base64 encoded blob on the server's terminal.
